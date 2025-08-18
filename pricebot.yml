@@ -29,4 +29,4 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           AMADEUS_HOST: https://api.amadeus.com
         run: |
-          python main.py
+          python main.py 
