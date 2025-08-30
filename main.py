@@ -1,4 +1,59 @@
 import os
+import json
+import time
+import requests
+
+# -------- Config --------
+DEFAULT_CONFIG = {
+    "origins": ["AMS", "BRU", "DUS"],
+    "destination": "KBV",
+    "outbound_dates": ["2025-04-17", "2025-04-18", "2025-04-19"],
+    "return_dates": ["2025-05-03", "2025-05-04", "2025-05-05"],
+    "prefer_after_18_from_AMS": True,
+    "max_total_duration_hours": 20,
+    "max_stops": 1,
+    "currency": "EUR",
+    "price_threshold_eur": None,
+    "adults": 2,
+    "children": [{"id": "2", "age": 3}, {"id": "3", "age": 5}],
+    "timeout_seconds": 20
+}
+
+def load_config():
+    cfg_path = os.path.join(os.path.dirname(__file__), "config.json")
+    if os.path.exists(cfg_path):
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            user_cfg = json.load(f)
+        merged = DEFAULT_CONFIG.copy()
+        merged.update(user_cfg or {})
+        return merged
+    return DEFAULT_CONFIG
+
+CONFIG = load_config()
+
+# -------- Environment variables --------
+AMADEUS_API_KEY = os.getenv("AMADEUS_API_KEY")
+AMADEUS_API_SECRET = os.getenv("AMADEUS_API_SECRET")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+AMADEUS_HOST = os.getenv("AMADEUS_HOST")
+
+# -------- Debug: check env vars --------
+missing_vars = []
+if not AMADEUS_API_KEY: missing_vars.append("AMADEUS_API_KEY")
+if not AMADEUS_API_SECRET: missing_vars.append("AMADEUS_API_SECRET")
+if not TELEGRAM_BOT_TOKEN: missing_vars.append("TELEGRAM_BOT_TOKEN")
+if not TELEGRAM_CHAT_ID: missing_vars.append("TELEGRAM_CHAT_ID")
+if not AMADEUS_HOST: missing_vars.append("AMADEUS_HOST")
+
+if missing_vars:
+    print("❌ ERROR: Missing required environment variables:")
+    for var in missing_vars:
+        print(f"   - {var}")
+    raise SystemExit("Fix your GitHub Secrets and re-run the workflow.")
+
+print("✅ All required environment variables are present.")
+
 
 def iso8601_duration_to_hours(dur):
     hours = 0
