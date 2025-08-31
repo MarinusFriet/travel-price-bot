@@ -6,16 +6,16 @@ import requests
 # -------- Config --------
 DEFAULT_CONFIG = {
     "origins": ["AMS", "BRU", "DUS"],
-    "destination": "KBV",
+    "destinations": ["KBV", "USM", "HKT"],  # Krabi, Koh Samui, Phuket
     "outbound_dates": ["2025-04-17", "2025-04-18", "2025-04-19"],
     "return_dates": ["2025-05-03", "2025-05-04", "2025-05-05"],
     "prefer_after_18_from_AMS": True,
     "max_total_duration_hours": 20,
     "max_stops": 1,
     "currency": "EUR",
-    "price_threshold_eur": None,
+    "price_threshold_eur": 800,
     "adults": 2,
-    "children": [{"id": "2", "age": 3}, {"id": "3", "age": 5}],
+    "children": [],  # 🚨 temporarily disabled to avoid API 400
     "timeout_seconds": 20
 }
 
@@ -91,7 +91,6 @@ def search_flights(token, origin, dest, depart_date, return_date):
         "departureDate": depart_date,
         "returnDate": return_date,
         "adults": CONFIG["adults"],
-        "children": len(CONFIG["children"]),
         "currencyCode": CONFIG["currency"],
         "max": 50,
         "maxNumberOfStops": CONFIG["max_stops"],
@@ -189,8 +188,8 @@ def main():
                     print(f"HTTP error on {origin} {d_out}/{d_ret}: {e}")
                 except Exception as e:
                     print(f"Error on {origin} {d_out}/{d_ret}: {e}")
-    if not any_found:
-        print("No qualifying offers found (or all above threshold).")
+    if not found_any:
+        send_telegram("ℹ️ Bot finished — no qualifying offers today.")
 
 if __name__ == "__main__":
     main()
