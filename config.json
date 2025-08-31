@@ -8,7 +8,6 @@
   "max_stops": 1,
   "currency": "EUR",
   "price_threshold_eur": 800,
-  "adults": 2,
-  "children": [{"id": "2", "age": 4}, {"id": "3", "age": 6}],
+  "adults": 1,
   "results_limit": 3
 }
