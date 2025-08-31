@@ -1,4 +1,14 @@
 {
-  "price_threshold_eur": null,
-  "prefer_after_18_from_AMS": true
+  "origins": ["AMS", "DUS", "BRU"],
+  "destinations": ["USM", "KBV", "HKT"],
+  "outbound_dates": ["2025-04-17", "2025-04-18", "2025-04-19"],
+  "return_dates": ["2025-05-03", "2025-05-04", "2025-05-05"],
+  "prefer_after_18_from_AMS": true,
+  "max_total_duration_hours": 20,
+  "max_stops": 1,
+  "currency": "EUR",
+  "price_threshold_eur": 800,
+  "adults": 2,
+  "children": [{"id": "2", "age": 4}, {"id": "3", "age": 6}],
+  "results_limit": 3
 }
