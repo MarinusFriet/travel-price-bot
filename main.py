@@ -5,10 +5,10 @@ import requests
 # -------- Config --------
 DEFAULT_CONFIG = {
     "origins": ["AMS", "BRU", "DUS"],
-    "destinations": ["KBV", "USM", "HKT"],  # Krabi, Koh Samui, Phuket
+    "destinations": ["USM", "KBV", "HKT"],  # Koh Samui, Krabi, Phuket
     "outbound_dates": ["2025-04-17", "2025-04-18", "2025-04-19"],
     "return_dates": ["2025-05-03", "2025-05-04", "2025-05-05"],
-    "prefer_after_18_from_AMS": True,
+    "prefer_after_17": True,
     "max_total_duration_hours": 20,
     "max_stops": 1,
     "currency": "EUR",
@@ -29,106 +29,83 @@ def load_config():
 
 CONFIG = load_config()
 
+# -------- Env vars --------
 AMADEUS_API_KEY = os.getenv("AMADEUS_API_KEY")
 AMADEUS_API_SECRET = os.getenv("AMADEUS_API_SECRET")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 AMADEUS_HOST = os.getenv("AMADEUS_HOST", "https://api.amadeus.com")
 
+if not all([AMADEUS_API_KEY, AMADEUS_API_SECRET, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]):
+    raise SystemExit("❌ ERROR: Missing required environment variables.")
 
-# ---- Telegram helper ----
-def send_telegram(msg: str):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("⚠️ Telegram not configured")
-        return
+# -------- Helpers --------
+def telegram_send(msg: str):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg}
-    try:
-        requests.post(url, json=payload, timeout=10)
-    except Exception as e:
-        print(f"⚠️ Failed to send Telegram message: {e}")
+    requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
 
-
-# ---- Amadeus helpers ----
 def get_access_token():
     url = f"{AMADEUS_HOST}/v1/security/oauth2/token"
-    data = {
+    resp = requests.post(url, data={
         "grant_type": "client_credentials",
         "client_id": AMADEUS_API_KEY,
-        "client_secret": AMADEUS_API_SECRET,
-    }
-    r = requests.post(url, data=data, timeout=10)
-    r.raise_for_status()
-    return r.json()["access_token"]
+        "client_secret": AMADEUS_API_SECRET
+    })
+    resp.raise_for_status()
+    return resp.json()["access_token"]
 
-
-def search_flights(token, origin, destination, dep, ret):
+def search_flights(token, origin, dest, dep, ret):
     url = f"{AMADEUS_HOST}/v2/shopping/flight-offers"
-    headers = {"Authorization": f"Bearer {token}"}
     params = {
         "originLocationCode": origin,
-        "destinationLocationCode": destination,
+        "destinationLocationCode": dest,
         "departureDate": dep,
         "returnDate": ret,
         "adults": CONFIG["adults"],
         "currencyCode": CONFIG["currency"],
-        "maxNumberOfStops": CONFIG["max_stops"],
         "max": 50,
+        "maxNumberOfStops": CONFIG["max_stops"],
     }
-    r = requests.get(url, headers=headers, params=params, timeout=20)
-    if r.status_code != 200:
-        raise Exception(f"API error {r.status_code}: {r.text}")
-    return r.json().get("data", [])
+    resp = requests.get(url, params=params, headers={"Authorization": f"Bearer {token}"})
+    if resp.status_code == 400:
+        return []  # bad request, skip this combo
+    resp.raise_for_status()
+    return resp.json().get("data", [])
 
-
+# -------- Main logic --------
 def main():
-    if not (AMADEUS_API_KEY and AMADEUS_API_SECRET and TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID):
-        print("❌ ERROR: Missing required environment variables")
-        return
-
-    try:
-        token = get_access_token()
-    except Exception as e:
-        send_telegram(f"❌ Failed to get Amadeus token: {e}")
-        return
-
+    token = get_access_token()
     all_offers = []
+    debug_summary = []
 
-    # collect all offers across all searches
     for origin in CONFIG["origins"]:
         for dest in CONFIG["destinations"]:
             for dep in CONFIG["outbound_dates"]:
                 for ret in CONFIG["return_dates"]:
-                    try:
-                        offers = search_flights(token, origin, dest, dep, ret)
-                        for o in offers:
-                            all_offers.append({
-                                "origin": origin,
-                                "dest": dest,
-                                "dep": dep,
-                                "ret": ret,
-                                "price": float(o["price"]["total"]),
-                                "carrier": o["itineraries"][0]["segments"][0]["carrierCode"],
-                                "duration": o["itineraries"][0]["duration"],
-                            })
-                    except Exception as e:
-                        print(f"⚠️ Error on {origin}->{dest} {dep}/{ret}: {e}")
+                    offers = search_flights(token, origin, dest, dep, ret)
+                    debug_summary.append(f"{origin}→{dest} {dep}/{ret}: {len(offers)} offers")
+                    all_offers.extend(offers)
 
-    # sort and take top 3 cheapest flights overall
-    if all_offers:
-        sorted_offers = sorted(all_offers, key=lambda x: x["price"])
-        top3 = sorted_offers[:3]
-        msg = "✈️ Top 3 cheapest flights found:\n"
-        for f in top3:
-            msg += (f"- {f['origin']}→{f['dest']} ({f['dep']} / {f['ret']})\n"
-                    f"  {f['carrier']} {f['duration']} — €{f['price']}\n")
-        send_telegram(msg)
+    # Sort and pick top 3 cheapest
+    sorted_offers = sorted(all_offers, key=lambda o: float(o["price"]["total"]))[:3]
+
+    # Build final message
+    msg = "✅ Workflow completed.\n\n"
+    msg += "📊 Search summary:\n" + "\n".join(debug_summary[:15])  # show only first 15 lines max
+    if len(debug_summary) > 15:
+        msg += f"\n... ({len(debug_summary)-15} more combos hidden)"
+
+    if sorted_offers:
+        msg += "\n\n💸 Top 3 cheapest flights:\n"
+        for i, offer in enumerate(sorted_offers, 1):
+            price = offer["price"]["total"]
+            itinerary = " → ".join([seg["departure"]["iataCode"] + "-" + seg["arrival"]["iataCode"]
+                                    for it in offer["itineraries"] for seg in it["segments"]])
+            msg += f"{i}. {price} {CONFIG['currency']} | {itinerary}\n"
     else:
-        send_telegram("ℹ️ No offers found for any search.")
+        msg += "\n\n❌ No flights found."
 
-    # always send workflow completion confirmation
-    send_telegram("✅ Flight search workflow completed successfully.")
-
+    telegram_send(msg)
 
 if __name__ == "__main__":
     main()
