@@ -12,9 +12,8 @@ DEFAULT_CONFIG = {
     "max_total_duration_hours": 20,
     "max_stops": 1,
     "currency": "EUR",
-    "price_threshold_eur": 800,
     "adults": 2,
-    "children": [],  # 🚨 temporarily disabled to avoid API 400
+    "children": [],
     "timeout_seconds": 20
 }
 
@@ -76,7 +75,6 @@ def search_flights(token, origin, destination, dep, ret):
         "maxNumberOfStops": CONFIG["max_stops"],
         "max": 50,
     }
-    # 🚨 no children param until we fix
     r = requests.get(url, headers=headers, params=params, timeout=20)
     if r.status_code != 200:
         raise Exception(f"API error {r.status_code}: {r.text}")
@@ -94,33 +92,43 @@ def main():
         send_telegram(f"❌ Failed to get Amadeus token: {e}")
         return
 
-    found_any = False
+    all_offers = []
+
+    # collect all offers across all searches
     for origin in CONFIG["origins"]:
         for dest in CONFIG["destinations"]:
             for dep in CONFIG["outbound_dates"]:
                 for ret in CONFIG["return_dates"]:
                     try:
                         offers = search_flights(token, origin, dest, dep, ret)
-                        if not offers:
-                            send_telegram(f"ℹ️ No flights found {origin}->{dest} {dep}/{ret}")
-                            continue
-                        found_any = True
-                        sorted_offers = sorted(offers, key=lambda o: float(o["price"]["total"]))
-                        top3 = sorted_offers[:3]
-
-                        msg = f"✈️ Top {len(top3)} flights {origin}->{dest} ({dep} / {ret}):\n"
-                        for o in top3:
-                            price = o["price"]["total"]
-                            carrier = o["itineraries"][0]["segments"][0]["carrierCode"]
-                            duration = o["itineraries"][0]["duration"]
-                            msg += f"- {carrier} {duration} €{price}\n"
-                        send_telegram(msg)
-
+                        for o in offers:
+                            all_offers.append({
+                                "origin": origin,
+                                "dest": dest,
+                                "dep": dep,
+                                "ret": ret,
+                                "price": float(o["price"]["total"]),
+                                "carrier": o["itineraries"][0]["segments"][0]["carrierCode"],
+                                "duration": o["itineraries"][0]["duration"],
+                            })
                     except Exception as e:
-                        send_telegram(f"⚠️ Error on {origin}->{dest} {dep}/{ret}: {e}")
+                        print(f"⚠️ Error on {origin}->{dest} {dep}/{ret}: {e}")
 
-    if not found_any:
-        send_telegram("ℹ️ Bot finished — no qualifying offers today.")
+    # sort and take top 3 cheapest flights overall
+    if all_offers:
+        sorted_offers = sorted(all_offers, key=lambda x: x["price"])
+        top3 = sorted_offers[:3]
+        msg = "✈️ Top 3 cheapest flights found:\n"
+        for f in top3:
+            msg += (f"- {f['origin']}→{f['dest']} ({f['dep']} / {f['ret']})\n"
+                    f"  {f['carrier']} {f['duration']} — €{f['price']}\n")
+        send_telegram(msg)
+    else:
+        send_telegram("ℹ️ No offers found for any search.")
+
+    # always send workflow completion confirmation
+    send_telegram("✅ Flight search workflow completed successfully.")
+
 
 if __name__ == "__main__":
     main()
