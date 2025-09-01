@@ -8,13 +8,12 @@ DEFAULT_CONFIG = {
     "destinations": ["USM", "KBV", "HKT"],  # Koh Samui, Krabi, Phuket
     "outbound_dates": ["2025-04-17", "2025-04-18", "2025-04-19"],
     "return_dates": ["2025-05-03", "2025-05-04", "2025-05-05"],
-    "prefer_after_17": True,
     "max_total_duration_hours": 20,
     "max_stops": 1,
     "currency": "EUR",
-    "adults": 2,
-    "children": [],
-    "timeout_seconds": 20
+    "adults": 1,       # only 1 adult now
+    "children": [],    # no children
+    "timeout_seconds": 40
 }
 
 def load_config():
