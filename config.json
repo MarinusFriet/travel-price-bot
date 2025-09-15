@@ -6,7 +6,7 @@
   "max_total_duration_hours": 24,
   "max_stops": 1,
   "currency": "EUR",
-  "price_threshold_eur": none,
+  "price_threshold_eur": None,
   "adults": 1,
   "results_limit": 5
 }
