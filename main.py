@@ -5,17 +5,17 @@ import requests
 
 # -------- Config --------
 DEFAULT_CONFIG = {
-    "origins": ["AMS", "BRU", "DUS"],
-    "destinations": ["USM", "KBV", "HKT"],  # Koh Samui, Krabi, Phuket
-    "outbound_dates": ["2025-04-17", "2025-04-18", "2025-04-19"],
-    "return_dates": ["2025-05-03", "2025-05-04", "2025-05-05"],
-    "max_total_duration_hours": 20,
+    "origins": ["AMS"],
+    "destinations": ["KBV"],
+    "outbound_dates": ["2025-04-18", "2025-04-19"],
+    "return_dates": ["2025-05-04", "2025-05-05"],
+    "max_total_duration_hours": 24,
     "max_stops": 1,
     "currency": "EUR",
     "price_threshold_eur": None,  # ignored now
     "adults": 1,
     "children": [],
-    "timeout_seconds": 20,
+    "timeout_seconds": 60,
 }
 
 def load_config():
