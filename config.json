@@ -1,12 +1,13 @@
 {
-  "origins": ["AMS"],
-  "destinations": ["KBV"],
-  "outbound_dates": ["2025-04-18", "2025-04-19"],
-  "return_dates": ["2025-05-04", "2025-05-05"],
-  "max_total_duration_hours": 24,
-  "max_stops": 1,
-  "currency": "EUR",
-  "price_threshold_eur": None,
-  "adults": 1,
-  "results_limit": 5
+    "origins": ["AMS"],                   # Only Amsterdam
+    "destinations": ["KBV"],              # Only Krabi
+    "outbound_dates": ["2026-04-18", "2026-04-19"],  # Saturday or Sunday
+    "return_dates": ["2026-05-04", "2026-05-05"],    # Monday or Tuesday
+    "max_total_duration_hours": 20,
+    "max_stops": 1,
+    "currency": "EUR",
+    "price_threshold_eur": None,  # ignored now
+    "adults": 1,
+    "children": [],
+    "timeout_seconds": 20,
 }
