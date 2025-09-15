@@ -1,31 +1,48 @@
 import os
-import json
 import time
 import requests
+from datetime import datetime, timedelta
 
 # -------- Config --------
 CONFIG = {
     "origins": ["AMS"],   # Amsterdam
     "destination": "KBV", # Krabi
-    "outbound_dates": ["2026-04-18", "2026-04-19"],  # Sat 18 or Sun 19 April 2026
-    "return_dates": ["2026-05-04", "2026-05-05"],    # Mon 4 or Tue 5 May 2026
-    "max_total_duration_hours": 24,
+    "outbound_dates": ["2026-04-18", "2026-04-19"],
+    "return_dates": ["2026-05-04", "2026-05-05"],
+    "max_total_duration_hours": 20,
     "max_stops": 1,
     "currency": "EUR",
-    "price_threshold_eur": None,   # No price filter
+    "price_threshold_eur": None,  # ignored now
     "adults": 1,
     "children": [],
     "timeout_seconds": 60
 }
 
-# -------- Environment Vars --------
+# -------- Airline lookup --------
+AIRLINES = {
+    "KL": "KLM",
+    "QR": "Qatar Airways",
+    "EK": "Emirates",
+    "TG": "Thai Airways",
+    "SQ": "Singapore Airlines",
+    "LH": "Lufthansa",
+    "LX": "SWISS",
+    "AF": "Air France",
+    "EY": "Etihad Airways",
+    "TK": "Turkish Airlines",
+    # add more as needed
+}
+
+def get_airline_name(code):
+    return AIRLINES.get(code, code)  # fallback to code if not mapped
+
+# -------- Env Vars --------
 AMADEUS_API_KEY = os.getenv("AMADEUS_API_KEY")
 AMADEUS_API_SECRET = os.getenv("AMADEUS_API_SECRET")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 AMADEUS_HOST = os.getenv("AMADEUS_HOST", "https://api.amadeus.com")
 
-# -------- Utils --------
 def log(msg):
     print(msg, flush=True)
 
@@ -34,7 +51,7 @@ def send_telegram_message(text):
         log("⚠️ Telegram not configured.")
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text}
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "Markdown"}
     try:
         requests.post(url, json=payload, timeout=10)
     except Exception as e:
@@ -71,6 +88,26 @@ def search_flights(token, origin, destination, depart, ret):
         return [], resp.text
     return resp.json().get("data", []), None
 
+# -------- Google Flights link generator --------
+def build_google_flights_url(origin, destination, depart, ret):
+    return f"https://www.google.com/travel/flights?q=Flights+from+{origin}+to+{destination}+on+{depart}+returning+{ret}"
+
+# -------- Helpers --------
+def parse_duration(duration_str):
+    # Example: "PT11H30M"
+    hours, minutes = 0, 0
+    if "H" in duration_str:
+        hours = int(duration_str.split("T")[1].split("H")[0])
+    if "M" in duration_str:
+        minutes = int(duration_str.split("H")[-1].replace("M", ""))
+    return f"{hours}h {minutes}m"
+
+def format_segment(segment):
+    dep_time = datetime.fromisoformat(segment["departure"]["at"]).strftime("%Y-%m-%d %H:%M")
+    arr_time = datetime.fromisoformat(segment["arrival"]["at"]).strftime("%Y-%m-%d %H:%M")
+    airline = get_airline_name(segment["carrierCode"])
+    return f"{segment['departure']['iataCode']} ({airline}) {dep_time} → {segment['arrival']['iataCode']} {arr_time}"
+
 # -------- Main --------
 def main():
     missing = [k for k, v in {
@@ -93,6 +130,10 @@ def main():
                 if error:
                     log(f"❌ Error: {error}")
                 else:
+                    for o in offers:
+                        o["_origin"] = origin
+                        o["_depart"] = depart
+                        o["_return"] = ret
                     all_offers.extend(offers)
 
     if not all_offers:
@@ -103,16 +144,40 @@ def main():
 
     # Sort by price
     all_offers.sort(key=lambda o: float(o["price"]["total"]))
-    best_offers = all_offers[:3]
+    best_offers = all_offers[:5]
 
-    lines = ["✅ Workflow finished.\n📊 Top 3 cheapest flights:"]
-    for o in best_offers:
+    lines = ["✅ Workflow finished.", "📊 Top 5 cheapest flights:\n"]
+    for i, o in enumerate(best_offers, 1):
         price = o["price"]["total"]
-        itineraries = []
-        for itin in o["itineraries"]:
-            segs = [f"{s['departure']['iataCode']}→{s['arrival']['iataCode']}" for s in itin["segments"]]
-            itineraries.append(" - ".join(segs))
-        lines.append(f"💶 {price} EUR | {' / '.join(itineraries)}")
+        depart = o["_depart"]
+        ret = o["_return"]
+        origin = o["_origin"]
+        destination = CONFIG["destination"]
+
+        # Outbound
+        itin_out = o["itineraries"][0]
+        duration_out = parse_duration(itin_out["duration"])
+        segs_out = [format_segment(s) for s in itin_out["segments"]]
+        stops_out = len(itin_out["segments"]) - 1
+
+        # Return
+        itin_back = o["itineraries"][1]
+        duration_back = parse_duration(itin_back["duration"])
+        segs_back = [format_segment(s) for s in itin_back["segments"]]
+        stops_back = len(itin_back["segments"]) - 1
+
+        link = build_google_flights_url(origin, destination, depart, ret)
+
+        lines.append(
+            f"{i}️⃣ 💶 {price} {CONFIG['currency']}\n"
+            f"   🛫 Outbound ({duration_out}, {stops_out} stops)\n"
+            f"   " + "\n   ".join(segs_out) + "\n"
+            f"   🛬 Return ({duration_back}, {stops_back} stops)\n"
+            f"   " + "\n   ".join(segs_back) + "\n"
+            f"   📅 Outbound: {depart}\n"
+            f"   📅 Return: {ret}\n"
+            f"   🔗 [View offer]({link})\n"
+        )
 
     msg = "\n".join(lines)
     log(msg)
